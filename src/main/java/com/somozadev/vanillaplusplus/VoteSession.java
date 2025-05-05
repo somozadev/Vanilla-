@@ -1,5 +1,7 @@
 package com.somozadev.vanillaplusplus;
-
+import net.minecraft.resources.ResourceLocation;
+import net.minecraft.stats.Stat;
+import net.minecraft.stats.Stats;
 import net.minecraft.server.level.ServerLevel;
 import net.minecraft.server.level.ServerPlayer;
 import net.minecraft.network.chat.Component;
@@ -8,6 +10,8 @@ import net.minecraftforge.server.ServerLifecycleHooks;
 import java.util.HashSet;
 import java.util.Set;
 import java.util.UUID;
+
+import static net.minecraft.stats.Stats.*;
 
 public class VoteSession {
     public final DemocracyManager.VoteType type;
@@ -42,8 +46,13 @@ public class VoteSession {
         String voteMessage = "§o §7 "+ player.getDisplayName().getString() + " voted " + (vote ? "§a YES" : "§c NO");
         ServerLifecycleHooks.getCurrentServer().getPlayerList().broadcastSystemMessage(Component.literal(voteMessage), false);
 
-        //TODO: check if vote cap > half player base
-        //TODO: TP , SORT , LOCK CHESTS , WHISPER, MORE VOTES
+        int totalPlayers = ServerLifecycleHooks.getCurrentServer().getPlayerList().getPlayerCount();
+        int majority = (totalPlayers / 2) + 1;
+        if(yesVotes.size() >= majority) {
+            DemocracyManager.FinishVote();
+        }
+
+        //TODO: TP , SORT , LOCK CHESTS , WHISPER,
 
 
         return true;
@@ -60,6 +69,10 @@ public class VoteSession {
             }
             case SLEEP -> {
                 ServerLifecycleHooks.getCurrentServer().overworld().setDayTime(VanillaPlusPlusConfig.COMMON.setDayTickHour.get());
+                Stat<ResourceLocation> stat = Stats.CUSTOM.get(Stats.TIME_SINCE_REST);
+                for (ServerPlayer player : ServerLifecycleHooks.getCurrentServer().getPlayerList().getPlayers()) {
+                    player.getStats().setValue(player,stat, 0);
+                }
                 ServerLifecycleHooks.getCurrentServer().getPlayerList().broadcastSystemMessage(Component.literal("Skipped the night by §l §ad§be§cm§do§ec§fr§aa§bc§cy§d!!"), false);
             }
         }
