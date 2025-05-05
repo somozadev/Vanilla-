@@ -12,4 +12,11 @@ public  class HomeData {
         this.dimension = dimension;
         this.pos = pos;
     }
+    public BlockPos GetPos() {
+        return pos;
+    }
+
+    public ResourceKey<Level> GetDimension() {
+        return dimension;
+    }
 }

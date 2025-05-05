@@ -34,8 +34,8 @@ import java.util.concurrent.CompletableFuture;
 
 
 public class HomeManager{
-    private static final Gson GSON = new GsonBuilder().setPrettyPrinting().create();
-    private static final Type TYPE = new TypeToken<Map<UUID, Map<String, BlockPos>>>(){}.getType();
+    private static final Gson GSON = new GsonBuilder().registerTypeAdapter(HomeData.class, new HomeManagerDeserializer()).setPrettyPrinting().create();
+    private static final Type TYPE = new TypeToken<Map<UUID, Map<String, HomeData>>>(){}.getType();
     private static final File FILE = new File("config/vanillaplusplus/homes.json");
 
     private static final Map<UUID, Map<String, HomeData>> homes = new HashMap<>();
@@ -120,10 +120,10 @@ public class HomeManager{
                 if (loaded != null) {
                     homes.clear();
                     homes.putAll(loaded);
-                    //    System.out.println("[VanillaPlusPlus] Homes loaded successfully.");
+                     System.out.println("[VanillaPlusPlus] Homes loaded successfully.");
                 }
             } catch (Exception e) {
-                //System.err.println("[VanillaPlusPlus] Failed to load homes:");
+                System.err.println("[VanillaPlusPlus] Failed to load homes:");
                 e.printStackTrace();
             }
         } else {
