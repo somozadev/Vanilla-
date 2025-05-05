@@ -15,8 +15,12 @@ import net.minecraft.network.chat.ClickEvent;
 import net.minecraft.network.chat.Component;
 import net.minecraft.network.chat.HoverEvent;
 import net.minecraft.network.chat.MutableComponent;
+import net.minecraft.resources.ResourceKey;
+import net.minecraft.server.level.ServerLevel;
 import net.minecraft.server.level.ServerPlayer;
-import org.checkerframework.checker.units.qual.C;
+import net.minecraft.world.level.Level;
+import net.minecraft.world.entity.Relative;
+import java.util.Set;
 
 import java.io.File;
 import java.io.FileReader;
@@ -34,8 +38,10 @@ public class HomeManager{
     private static final Type TYPE = new TypeToken<Map<UUID, Map<String, BlockPos>>>(){}.getType();
     private static final File FILE = new File("config/vanillaplusplus/homes.json");
 
-    private static final Map<UUID, Map<String, BlockPos>> homes = new HashMap<>();
-    private static final Map<UUID, Map<String, BlockPos>> sharedHomes = new HashMap<>();
+    private static final Map<UUID, Map<String, HomeData>> homes = new HashMap<>();
+    private static final Map<UUID, Map<String, HomeData>> sharedHomes = new HashMap<>();
+
+
 
 
     public static CompletableFuture<Suggestions> suggestHomes(CommandContext<CommandSourceStack> context, SuggestionsBuilder builder)
@@ -47,7 +53,7 @@ public class HomeManager{
             return Suggestions.empty();
         }
 
-        Map<String, BlockPos> playerHomes = homes.get(player.getUUID());
+        Map<String, HomeData> playerHomes = homes.get(player.getUUID());
         if(playerHomes!=null)
         {
             for(String homeName:playerHomes.keySet()){
@@ -57,32 +63,39 @@ public class HomeManager{
         return builder.buildFuture();
     }
     public static void SetHome(ServerPlayer player, String name){
-        homes.computeIfAbsent(player.getUUID(), k->new HashMap<>()).put(name, player.blockPosition());
+        homes.computeIfAbsent(player.getUUID(), k->new HashMap<>()).put(name, new HomeData(player.level().dimension(),player.blockPosition()));
     }
-    public static void SetHome(ServerPlayer player, String name, BlockPos pos){
-        homes.computeIfAbsent(player.getUUID(), k->new HashMap<>()).put(name, pos);
+    public static void SetHome(ServerPlayer player, String name, ResourceKey<Level> dimension, BlockPos pos){
+        homes.computeIfAbsent(player.getUUID(), k->new HashMap<>()).put(name, new HomeData(dimension, pos));
     }
     public static boolean CanSetMoreHomes(ServerPlayer player)
-    {   Map<String, BlockPos> ph = homes.get(player.getUUID());
+    {   Map<String, HomeData> ph = homes.get(player.getUUID());
         int currentCount = (ph != null) ? ph.size() : 0;
         int maxCount = VanillaPlusPlusConfig.COMMON.maxHomes.get();
         return currentCount < maxCount;
     }
     public static BlockPos GetHome(UUID playerId, String name) {
-        Map<String, BlockPos> ph = homes.get(playerId);
+        Map<String, HomeData> ph = homes.get(playerId);
         if (ph == null) return null;
 
-        return ph.get(name);
+        return ph.get(name).pos;
     }
     public static BlockPos GetHome(ServerPlayer player, String name){
-        Map<String, BlockPos> layerHomes = homes.get(player.getUUID());
+        Map<String, HomeData> layerHomes = homes.get(player.getUUID());
         if(layerHomes != null){
-            return layerHomes.get(name);
+            return layerHomes.get(name).pos;
+        }
+        return null;
+    }
+    public static ResourceKey<Level> GetDimension(ServerPlayer player, String name){
+        Map<String, HomeData> layerHomes = homes.get(player.getUUID());
+        if(layerHomes != null){
+            return layerHomes.get(name).dimension;
         }
         return null;
     }
     public static void RemoveHome(ServerPlayer player, String name){
-        Map<String, BlockPos> playerHomes = homes.get(player.getUUID());
+        Map<String, HomeData> playerHomes = homes.get(player.getUUID());
         if(playerHomes != null){
             playerHomes.remove(name);
         }
@@ -100,16 +113,29 @@ public class HomeManager{
         }
     }
 
-    public static void LoadHomes()
-    {
-        if(!FILE.exists()){
-            try(FileReader reader = new FileReader(FILE)){
-                Map<UUID, Map<String, BlockPos>> loaded = GSON.fromJson(reader, TYPE);
+    public static void LoadHomes() {
+        if (FILE.exists()) {
+            try (FileReader reader = new FileReader(FILE)) {
+                Map<UUID, Map<String, HomeData>> loaded = GSON.fromJson(reader, TYPE);
                 if (loaded != null) {
                     homes.clear();
                     homes.putAll(loaded);
+                    //    System.out.println("[VanillaPlusPlus] Homes loaded successfully.");
                 }
             } catch (Exception e) {
+                //System.err.println("[VanillaPlusPlus] Failed to load homes:");
+                e.printStackTrace();
+            }
+        } else {
+            try {
+                FILE.getParentFile().mkdirs();
+                FILE.createNewFile();
+                try (FileWriter writer = new FileWriter(FILE)) {
+                    GSON.toJson(homes, TYPE, writer); // Guardar estructura vacía
+                }
+                //System.out.println("[VanillaPlusPlus] Created new homes.json file.");
+            } catch (IOException e) {
+                //System.err.println("[VanillaPlusPlus] Failed to create homes.json:");
                 e.printStackTrace();
             }
         }
@@ -119,7 +145,7 @@ public class HomeManager{
         BlockPos pos = GetHome(sender, homeName);
         if (pos == null) return;
 
-        sharedHomes.computeIfAbsent(sender.getUUID(), k -> new HashMap<>()).put(homeName, pos);
+        sharedHomes.computeIfAbsent(sender.getUUID(), k -> new HashMap<>()).put(homeName, new HomeData(sender.level().dimension(),pos));
 
         String command = "/acceptsharedhome " + sender.getUUID() + " " + homeName;
         MutableComponent msg = Component.literal(sender.getName().getString() + " shared a home: " ).append(Component.literal("[" + homeName + "]")).withStyle(style -> style.withColor(ChatFormatting.GREEN).withBold(true).withClickEvent(new ClickEvent(ClickEvent.Action.RUN_COMMAND, command)).withHoverEvent(new HoverEvent(HoverEvent.Action.SHOW_TEXT, Component.literal("Click to save this home to your list"))));
@@ -139,13 +165,14 @@ public class HomeManager{
         while (HasHome(player, homeName)) {
             homeName = baseName + "_" + counter++;
         }
-        BlockPos pos = sharedHomes.get(ownerUUID).get(homeName);
-        SetHome(player, homeName, pos);
+        BlockPos pos = sharedHomes.get(ownerUUID).get(homeName).pos;
+        ResourceKey<Level> dim = sharedHomes.get(ownerUUID).get(homeName).dimension;
+        SetHome(player, homeName, dim, pos);
         player.sendSystemMessage(Component.literal("§o §e Home §l '" + homeName + "' §r §o §e added to your list."), false);
     }
 
     public static boolean HasHome(ServerPlayer player, String homeName){
-        Map<String, BlockPos> playerHomes = homes.get(player.getUUID());
+        Map<String, HomeData> playerHomes = homes.get(player.getUUID());
         return playerHomes != null && playerHomes.containsKey(homeName);
     }
 
@@ -155,7 +182,7 @@ public class HomeManager{
         public static int execute(CommandContext<CommandSourceStack> context) throws CommandSyntaxException {
             ServerPlayer player = context.getSource().getPlayerOrException();
             String name = StringArgumentType.getString(context, "name");
-            Map<String, BlockPos> playerHomes = homes.computeIfAbsent(player.getUUID(), k -> new HashMap<>());
+            Map<String, HomeData> playerHomes = homes.computeIfAbsent(player.getUUID(), k -> new HashMap<>());
             if (playerHomes.size() >= VanillaPlusPlus.GetMaxHomes() && !playerHomes.containsKey(name)) {
                 context.getSource().sendFailure(Component.literal("You have the maximum amount of homes!"));
                 return 0;
@@ -188,8 +215,12 @@ public class HomeManager{
                 return 0;
             }
             BlockPos pos = HomeManager.GetHome(player, name);
+            ResourceKey<Level> dim = HomeManager.GetDimension(player, name);
+
             if(pos != null){
-                player.teleportTo(pos.getX()+.5, pos.getY(), pos.getZ()+.5);
+
+                ServerLevel level = player.getServer().getLevel(dim);
+                player.teleportTo(level,pos.getX() + 0.5, (double) pos.getY(),pos.getZ() + 0.5,Set.of(), player.getYRot(),player.getXRot(),false );
                 context.getSource().sendSuccess(() -> Component.literal("Teleported to home '" + name + "'!"), false);
                 CooldownManager.SetCooldown(player, "home");
             }else {
