@@ -1,3 +1,20 @@
+Mod features
+-------------------------------------------
+/sethome "home_name" 
+/delhome "home_name" 
+/home "home_name"
+/sharehome "home_name"
+
+/vote gotosleep
+/vote clearweather
+
+/vote yes
+/vote no
+
+Screenshots
+-------------------------------------------
+![Screenshots](https://play-lh.googleusercontent.com/xrapIa9ib0m4teKQLGzT9PJjSYU160f_ezyUPH0kaVfDpih6FMGdfTul1_h_8I4cpAU=w240-h480-rw)
+
 
 Source installation information for modders
 -------------------------------------------
